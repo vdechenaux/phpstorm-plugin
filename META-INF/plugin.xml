@@ -72,6 +72,12 @@
       <add-to-group group-id="RunMenu" anchor="last"/>
       <keyboard-shortcut first-keystroke="alt shift V" keymap="$default"/>
     </action>
+
+    <action id="AtoumGenerateTest" class="org.atoum.intellij.plugin.atoum.actions.GenerateTest"
+            icon="/org/atoum/intellij/plugin/atoum/icons/atoum_16_16.png"
+            text="generate test class">
+      <add-to-group group-id="GenerateGroup" anchor="last"/>
+    </action>
   </actions>
 
 
