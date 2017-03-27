@@ -173,6 +173,7 @@ public class Runner {
                 @Override
                 public void onTestingStarted(TestResultsViewer testResultsViewer) {
 
+                    console.getResultsViewer().onTestsCountInSuite(1);
                     if (finalProcessHandler != null) {
                         finalProcessHandler.addProcessListener(new ProcessAdapter() {
                             public void onTextAvailable(ProcessEvent event, Key outputType) {
@@ -196,6 +197,7 @@ public class Runner {
                     TestsResult testsResult = TestsResultFactory.createFromTapOutput(outputBuilder.toString());
 
                     SMTRootTestProxyFactory.updateFromTestResult(testsResult, testsRootNode);
+                    console.getResultsViewer().onTestFinished(testsRootNode);
 
                     selectFirstFailedMethod();
 
