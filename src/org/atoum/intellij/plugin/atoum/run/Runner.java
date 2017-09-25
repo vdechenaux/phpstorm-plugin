@@ -38,6 +38,10 @@ import org.atoum.intellij.plugin.atoum.model.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.atoum.intellij.plugin.atoum.Icons;
+import org.jetbrains.tap.Directive;
+import org.jetbrains.tap.TapHandler;
+import org.jetbrains.tap.TapParser;
+
 import java.io.File;
 
 import java.util.*;
@@ -159,75 +163,110 @@ public class Runner {
                 environnmentVariables
             );
 
+            TapParser parser = new TapParser();
+            parser.addHandler(new TapHandler() {
+                @Override
+                public void version(int version) {
+
+                }
+
+                @Override
+                public void plan(int numTests, Directive directive) {
+                    ((SMTRunnerConsoleView) testsOutputConsoleView).getResultsViewer().onTestsCountInSuite(numTests);
+                }
+
+                @Override
+                public void test(int orderNum, boolean ok, String description, Directive directive) {
+                    SMTestProxy.SMRootTestProxy classNode = new SMTestProxy.SMRootTestProxy();
+                    classNode.setPresentation(""+orderNum);
+                    classNode.setFinished();
+//                    if (!ok)
+//                        classNode.setTestFailed("","",true);
+
+                    ((SMTRunnerConsoleView) testsOutputConsoleView).getResultsViewer().onTestFinished(classNode);
+                    ((SMTRunnerConsoleView) testsOutputConsoleView).getResultsViewer().getTestsRootNode().addChild(classNode);
+                    ((SMTRunnerConsoleView) testsOutputConsoleView).getResultsViewer().getTestsRootNode().setFinished();
+                }
+
+                @Override
+                public void comment(String comment) {
+
+                }
+
+                @Override
+                public void bailout(String text) {
+
+                }
+
+                @Override
+                public void unknown(String text) {
+
+                }
+            });
+            processHandler.addProcessListener(new ProcessAdapter() {
+                public void onTextAvailable(ProcessEvent event, Key outputType) {
+                    parser.parse(event.getText());
+                }
+                public void processTerminated(ProcessEvent event) {
+                }
+            });
 
             testsOutputConsoleView.attachToProcess(processHandler);
             console.getResultsViewer().setAutoscrolls(true);
             TestConsoleProperties.HIDE_PASSED_TESTS.set(testsOutputConsoleView.getProperties(), true);
             TestConsoleProperties.SELECT_FIRST_DEFECT.set(testsOutputConsoleView.getProperties(), true);
 
-            final OSProcessHandler finalProcessHandler = processHandler;
-            console.getResultsViewer().addEventsListener(new TestResultsViewer.EventsListener() {
-
-                final StringBuilder outputBuilder = new StringBuilder();
-
-                @Override
-                public void onTestingStarted(TestResultsViewer testResultsViewer) {
-
-                    console.getResultsViewer().onTestsCountInSuite(1);
-                    if (finalProcessHandler != null) {
-                        finalProcessHandler.addProcessListener(new ProcessAdapter() {
-                            public void onTextAvailable(ProcessEvent event, Key outputType) {
-                                outputBuilder.append(event.getText());
-                            }
-                            public void processTerminated(ProcessEvent event) {
-                            }
-                        });
-                    }
-                }
-
-                @Override
-                public void onTestingFinished(TestResultsViewer testResultsViewer) {
-                    SMTestProxy testsRootNode = testResultsViewer.getTestsRootNode();
-
-                    if (outputBuilder.length() == 0) {
-                        testsRootNode.setTestFailed("No tests were found!", "", true);
-                        return;
-                    }
-
-                    TestsResult testsResult = TestsResultFactory.createFromTapOutput(outputBuilder.toString());
-
-                    SMTRootTestProxyFactory.updateFromTestResult(testsResult, testsRootNode);
-                    console.getResultsViewer().onTestFinished(testsRootNode);
-
-                    selectFirstFailedMethod();
-
-                    if (testsResult.getState().equals(testsResult.STATE_PASSED)) {
-                        TestConsoleProperties.HIDE_PASSED_TESTS.set(testsOutputConsoleView.getProperties(), false);
-                    }
-                }
-
-                protected void selectFirstFailedMethod()
-                {
-                    for (SMTestProxy testProxy: console.getResultsViewer().getTestsRootNode().getAllTests()) {
-                        for (SMTestProxy methodProxy: testProxy.getAllTests()) {
-                            if (methodProxy.isDefect()) {
-                                console.getResultsViewer().selectAndNotify(methodProxy);
-                            }
-                        }
-
-                    }
-                }
-
-                @Override
-                public void onTestNodeAdded(TestResultsViewer testResultsViewer, SMTestProxy smTestProxy) {
-
-                }
-
-                @Override
-                public void onSelected(@Nullable SMTestProxy smTestProxy, @NotNull TestResultsViewer testResultsViewer, @NotNull TestFrameworkRunningModel testFrameworkRunningModel) {
-
-                }
-            });
+//            console.getResultsViewer().addEventsListener(new TestResultsViewer.EventsListener() {
+//
+//                final StringBuilder outputBuilder = new StringBuilder();
+//
+//                @Override
+//                public void onTestingStarted(TestResultsViewer testResultsViewer) {
+//
+//                }
+//
+//                @Override
+//                public void onTestingFinished(TestResultsViewer testResultsViewer) {
+//                    SMTestProxy testsRootNode = testResultsViewer.getTestsRootNode();
+//
+//                    if (outputBuilder.length() == 0) {
+//                        testsRootNode.setTestFailed("No tests were found!", "", true);
+//                        return;
+//                    }
+//
+//                    TestsResult testsResult = TestsResultFactory.createFromTapOutput(outputBuilder.toString());
+//
+//                    SMTRootTestProxyFactory.updateFromTestResult(testsResult, testsRootNode);
+//
+//                    selectFirstFailedMethod();
+//
+//                    if (testsResult.getState().equals(testsResult.STATE_PASSED)) {
+//                        TestConsoleProperties.HIDE_PASSED_TESTS.set(testsOutputConsoleView.getProperties(), false);
+//                    }
+//                }
+//
+//                protected void selectFirstFailedMethod()
+//                {
+//                    for (SMTestProxy testProxy: console.getResultsViewer().getTestsRootNode().getAllTests()) {
+//                        for (SMTestProxy methodProxy: testProxy.getAllTests()) {
+//                            if (methodProxy.isDefect()) {
+//                                console.getResultsViewer().selectAndNotify(methodProxy);
+//                            }
+//                        }
+//
+//                    }
+//                }
+//
+//                @Override
+//                public void onTestNodeAdded(TestResultsViewer testResultsViewer, SMTestProxy smTestProxy) {
+//
+//                }
+//
+//                @Override
+//                public void onSelected(@Nullable SMTestProxy smTestProxy, @NotNull TestResultsViewer testResultsViewer, @NotNull TestFrameworkRunningModel testFrameworkRunningModel) {
+//
+//                }
+//            });
 
             processHandler.startNotify();
 
