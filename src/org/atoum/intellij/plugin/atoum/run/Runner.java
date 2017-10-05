@@ -2,6 +2,7 @@ package org.atoum.intellij.plugin.atoum.run;
 
 import com.intellij.execution.ExecutionException;
 import com.intellij.execution.Executor;
+import com.intellij.execution.actions.StopProcessAction;
 import com.intellij.execution.configurations.ConfigurationFactory;
 import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.configurations.RunConfiguration;
@@ -18,7 +19,11 @@ import com.intellij.execution.testframework.ui.BaseTestsOutputConsoleView;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
 import com.intellij.notification.Notifications;
+import com.intellij.openapi.actionSystem.ActionManager;
+import com.intellij.openapi.actionSystem.ActionToolbar;
+import com.intellij.openapi.actionSystem.DefaultActionGroup;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.SimpleToolWindowPanel;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -137,17 +142,9 @@ public class Runner {
             commandLineBuilder.useConfigFile(phpstormConfigFile);
         }
 
-        ContentManager contentManager = toolWindow.getContentManager();
-        Content myContent;
-        myContent = toolWindow.getContentManager().getFactory().createContent(testsOutputConsoleView.getComponent(), "tests results", false);
-        toolWindow.getContentManager().removeAllContents(true);
-        toolWindow.getContentManager().addContent(myContent);
-
-        final SMTRunnerConsoleView console = (SMTRunnerConsoleView)testsOutputConsoleView;
-
         String[] commandLineArgs = commandLineBuilder.build();
 
-        HashMap environnmentVariables = new HashMap();
+        HashMap<String, String> environnmentVariables = new HashMap<>();
         environnmentVariables.put("PHPSTORM", "1");
 
         OSProcessHandler processHandler = null;
@@ -158,81 +155,95 @@ public class Runner {
                 commandLineArgs,
                 environnmentVariables
             );
-
-
-            testsOutputConsoleView.attachToProcess(processHandler);
-            console.getResultsViewer().setAutoscrolls(true);
-            TestConsoleProperties.HIDE_PASSED_TESTS.set(testsOutputConsoleView.getProperties(), true);
-            TestConsoleProperties.SELECT_FIRST_DEFECT.set(testsOutputConsoleView.getProperties(), true);
-
-            final OSProcessHandler finalProcessHandler = processHandler;
-            console.getResultsViewer().addEventsListener(new TestResultsViewer.EventsListener() {
-
-                final StringBuilder outputBuilder = new StringBuilder();
-
-                @Override
-                public void onTestingStarted(TestResultsViewer testResultsViewer) {
-
-                    if (finalProcessHandler != null) {
-                        finalProcessHandler.addProcessListener(new ProcessAdapter() {
-                            public void onTextAvailable(ProcessEvent event, Key outputType) {
-                                outputBuilder.append(event.getText());
-                            }
-                            public void processTerminated(ProcessEvent event) {
-                            }
-                        });
-                    }
-                }
-
-                @Override
-                public void onTestingFinished(TestResultsViewer testResultsViewer) {
-                    SMTestProxy testsRootNode = testResultsViewer.getTestsRootNode();
-
-                    if (outputBuilder.length() == 0) {
-                        testsRootNode.setTestFailed("No tests were found!", "", true);
-                        return;
-                    }
-
-                    TestsResult testsResult = TestsResultFactory.createFromTapOutput(outputBuilder.toString());
-
-                    SMTRootTestProxyFactory.updateFromTestResult(testsResult, testsRootNode);
-
-                    selectFirstFailedMethod();
-
-                    if (testsResult.getState().equals(testsResult.STATE_PASSED)) {
-                        TestConsoleProperties.HIDE_PASSED_TESTS.set(testsOutputConsoleView.getProperties(), false);
-                    }
-                }
-
-                protected void selectFirstFailedMethod()
-                {
-                    for (SMTestProxy testProxy: console.getResultsViewer().getTestsRootNode().getAllTests()) {
-                        for (SMTestProxy methodProxy: testProxy.getAllTests()) {
-                            if (methodProxy.isDefect()) {
-                                console.getResultsViewer().selectAndNotify(methodProxy);
-                            }
-                        }
-
-                    }
-                }
-
-                @Override
-                public void onTestNodeAdded(TestResultsViewer testResultsViewer, SMTestProxy smTestProxy) {
-
-                }
-
-                @Override
-                public void onSelected(@Nullable SMTestProxy smTestProxy, @NotNull TestResultsViewer testResultsViewer, @NotNull TestFrameworkRunningModel testFrameworkRunningModel) {
-
-                }
-            });
-
-            processHandler.startNotify();
-
-
         } catch (ExecutionException e) {
             Notifications.Bus.notify(new Notification("atoumGroup", "Error running tests", e.getMessage(), NotificationType.ERROR, null), project);
+            return null;
         }
+
+        ActionManager am = ActionManager.getInstance();
+        DefaultActionGroup buttonGroup = new DefaultActionGroup();
+        buttonGroup.add(new StopProcessAction("Stop" ,"", processHandler));
+        ActionToolbar viewToolbar = am.createActionToolbar("atoum.ConsoleToolbar", buttonGroup, false);
+
+        SimpleToolWindowPanel toolWindowPanel = new SimpleToolWindowPanel(false, true);
+        toolWindowPanel.setContent(testsOutputConsoleView.getComponent());
+        toolWindowPanel.setToolbar(viewToolbar.getComponent());
+
+        ContentManager contentManager = toolWindow.getContentManager();
+        Content myContent = contentManager.getFactory().createContent(toolWindowPanel.getComponent(), "tests results", false);
+        contentManager.removeAllContents(true);
+        contentManager.addContent(myContent);
+
+        final SMTRunnerConsoleView console = (SMTRunnerConsoleView)testsOutputConsoleView;
+
+        testsOutputConsoleView.attachToProcess(processHandler);
+        console.getResultsViewer().setAutoscrolls(true);
+        TestConsoleProperties.HIDE_PASSED_TESTS.set(testsOutputConsoleView.getProperties(), true);
+        TestConsoleProperties.SELECT_FIRST_DEFECT.set(testsOutputConsoleView.getProperties(), true);
+
+        final OSProcessHandler finalProcessHandler = processHandler;
+        console.getResultsViewer().addEventsListener(new TestResultsViewer.EventsListener() {
+
+            final StringBuilder outputBuilder = new StringBuilder();
+
+            @Override
+            public void onTestingStarted(TestResultsViewer testResultsViewer) {
+
+                if (finalProcessHandler != null) {
+                    finalProcessHandler.addProcessListener(new ProcessAdapter() {
+                        public void onTextAvailable(ProcessEvent event, Key outputType) {
+                            outputBuilder.append(event.getText());
+                        }
+                        public void processTerminated(ProcessEvent event) {
+                        }
+                    });
+                }
+            }
+
+            @Override
+            public void onTestingFinished(TestResultsViewer testResultsViewer) {
+                SMTestProxy testsRootNode = testResultsViewer.getTestsRootNode();
+
+                if (outputBuilder.length() == 0) {
+                    testsRootNode.setTestFailed("No tests were found!", "", true);
+                    return;
+                }
+
+                TestsResult testsResult = TestsResultFactory.createFromTapOutput(outputBuilder.toString());
+
+                SMTRootTestProxyFactory.updateFromTestResult(testsResult, testsRootNode);
+
+                selectFirstFailedMethod();
+
+                if (testsResult.getState().equals(TestsResult.STATE_PASSED)) {
+                    TestConsoleProperties.HIDE_PASSED_TESTS.set(testsOutputConsoleView.getProperties(), false);
+                }
+            }
+
+            protected void selectFirstFailedMethod()
+            {
+                for (SMTestProxy testProxy: console.getResultsViewer().getTestsRootNode().getAllTests()) {
+                    for (SMTestProxy methodProxy: testProxy.getAllTests()) {
+                        if (methodProxy.isDefect()) {
+                            console.getResultsViewer().selectAndNotify(methodProxy);
+                        }
+                    }
+
+                }
+            }
+
+            @Override
+            public void onTestNodeAdded(TestResultsViewer testResultsViewer, SMTestProxy smTestProxy) {
+
+            }
+
+            @Override
+            public void onSelected(@Nullable SMTestProxy smTestProxy, @NotNull TestResultsViewer testResultsViewer, @NotNull TestFrameworkRunningModel testFrameworkRunningModel) {
+
+            }
+        });
+
+        processHandler.startNotify();
 
         return testsOutputConsoleView;
     }
