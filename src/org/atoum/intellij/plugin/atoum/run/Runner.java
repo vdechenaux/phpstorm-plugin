@@ -25,14 +25,15 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowAnchor;
 import com.intellij.openapi.wm.ToolWindowManager;
-import com.intellij.psi.PsiDirectory;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentManager;
+import com.intellij.util.PathMappingSettings;
 import com.jetbrains.php.config.PhpProjectConfigurationFacade;
 import com.jetbrains.php.config.interpreters.PhpConfigurationOptionData;
 import com.jetbrains.php.config.interpreters.PhpInterpreter;
 import com.jetbrains.php.run.PhpRunConfiguration;
 import com.jetbrains.php.run.PhpRunConfigurationFactoryBase;
+import com.jetbrains.php.run.remote.PhpRemoteInterpreterManager;
 import org.atoum.intellij.plugin.atoum.AtoumUtils;
 import org.atoum.intellij.plugin.atoum.model.*;
 import org.jetbrains.annotations.NotNull;
@@ -77,7 +78,7 @@ public class Runner {
     //   https://github.com/JetBrains/intellij-community/blob/6555e34dc0b5c4bd3a8c9efc7d8e5ca84929af40/platform/platform-impl/src/com/intellij/execution/process/ScriptRunnerUtil.java
     // with not log and charset support
     // but with environment variables support
-    protected OSProcessHandler prepareProcessHandler(@NotNull String exePath, @Nullable String workingDirectory, String[] parameters, @Nullable Map<String, String> environment) throws ExecutionException {
+    protected ProcessHandler prepareProcessHandler(@NotNull String exePath, @Nullable String workingDirectory, String[] parameters, @Nullable Map<String, String> environment, PhpInterpreter interpreter) throws ExecutionException {
         GeneralCommandLine commandLine = new GeneralCommandLine(exePath);
         commandLine.addParameters(parameters);
         if (workingDirectory != null) {
@@ -85,6 +86,23 @@ public class Runner {
         }
 
         commandLine.withEnvironment(environment);
+
+        if (interpreter.isRemote()) {
+            PhpRemoteInterpreterManager remoteManager = PhpRemoteInterpreterManager.getInstance();
+            if (remoteManager != null) {
+                PathMappingSettings mapping = remoteManager.createPathMappings(project, interpreter.getPhpSdkAdditionalData());
+                commandLine.setWorkDirectory(mapping.convertToRemote(workingDirectory));
+
+                return remoteManager.getRemoteProcessHandler(
+                        project,
+                        interpreter.getPhpSdkAdditionalData(),
+                        commandLine,
+                        mapping.getPathMappings().toArray(
+                                new PathMappingSettings.PathMapping[mapping.getPathMappings().size()]
+                        )
+                );
+            }
+        }
 
         return new ColoredProcessHandler(commandLine);
     }
@@ -150,13 +168,14 @@ public class Runner {
         HashMap environnmentVariables = new HashMap();
         environnmentVariables.put("PHPSTORM", "1");
 
-        OSProcessHandler processHandler = null;
+        ProcessHandler processHandler = null;
         try {
             processHandler = this.prepareProcessHandler(
                 phpPath,
                 testBasePath,
                 commandLineArgs,
-                environnmentVariables
+                environnmentVariables,
+                interpreter
             );
 
 
@@ -165,7 +184,7 @@ public class Runner {
             TestConsoleProperties.HIDE_PASSED_TESTS.set(testsOutputConsoleView.getProperties(), true);
             TestConsoleProperties.SELECT_FIRST_DEFECT.set(testsOutputConsoleView.getProperties(), true);
 
-            final OSProcessHandler finalProcessHandler = processHandler;
+            final ProcessHandler finalProcessHandler = processHandler;
             console.getResultsViewer().addEventsListener(new TestResultsViewer.EventsListener() {
 
                 final StringBuilder outputBuilder = new StringBuilder();

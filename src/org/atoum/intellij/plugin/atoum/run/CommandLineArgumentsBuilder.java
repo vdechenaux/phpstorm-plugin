@@ -38,7 +38,7 @@ public class CommandLineArgumentsBuilder {
     public CommandLineArgumentsBuilder useConfigFile(String configFilePath)
     {
         this.commandLineArgs.add("-c");
-        this.commandLineArgs.add(configFilePath);
+        this.commandLineArgs.add(this.relativizePath(configFilePath));
 
         return this;
     }
